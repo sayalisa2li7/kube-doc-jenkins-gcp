@@ -2,8 +2,8 @@ pipeline {
     agent any
     
     environment {
-        GCS_CREDS = credentials('gcs-service-account-key') // Jenkins credential ID for GCS service account key
-        KUBE_CONFIG = credentials('kube-config-file') // Jenkins credential ID for Kubernetes config file
+        GCS_CREDS = credentials('gcs-service-account-key') // Jenkins credential ID - GCS service account key
+        KUBE_CONFIG = credentials('kube-config-file') // Jenkins credential ID - Kubernetes config file
     }
     
     stages {

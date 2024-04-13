@@ -1,0 +1,50 @@
+pipeline {
+    agent any
+    
+    environment {
+        GCS_CREDS = credentials('gcs-service-account-key') // Jenkins credential ID for GCS service account key
+        KUBE_CONFIG = credentials('kube-config-file') // Jenkins credential ID for Kubernetes config file
+    }
+    
+    stages {
+        stage('Fetch Dockerfile and Kubernetes Files from GCS') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'gcs-service-account-key', variable: 'GCS_CREDS')]) {
+                        sh "gcloud auth activate-service-account --key-file=${GCS_CREDS}"
+
+                        // Fetch files from GCS bucket
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/Dockerfile ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/deployment.yaml ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/service.yaml ."
+                    }
+                }
+            }
+        }
+        
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'gcs-service-account-key', variable: 'GCS_CREDS')]) {
+                        sh "gcloud auth activate-service-account --key-file=${GCS_CREDS}"
+                        // Build and push Docker image
+                        sh "docker pull gcr.io/kube-doc-jenkins/fibonacci-app:1.0"
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'kube-config-file', variable: 'KUBE_CONFIG')]) {
+                        withEnv(["KUBECONFIG=${KUBE_CONFIG}"]) {
+                            sh "kubectl apply -f deployment.yaml"
+                            sh "kubectl apply -f service.yaml"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

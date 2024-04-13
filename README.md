@@ -64,4 +64,4 @@
 
 **Configure Jenkins credentials**:
 
-- Add credentials to Jenkins to authenticate with the Docker registry and Kubernetes cluster.
+- Add credentials to Jenkins to authenticate with the Google Docker registry and Kubernetes cluster.

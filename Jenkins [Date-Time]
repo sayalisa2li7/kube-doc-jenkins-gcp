@@ -1,0 +1,58 @@
+pipeline {
+    agent any
+    
+    environment {
+        GCS_CREDS = credentials('gcs-service-account-key')
+        KUBE_CONFIG = credentials('kube-config-file')
+        IMAGE_TAG = "${new Date().format('yyyyMMdd-HHmmss')}"
+    }
+    
+    stages {
+        stage('Activate Service Account and Fetch Files') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'gcs-service-account-key', variable: 'GCS_CREDS')]) {
+                        sh "gcloud auth activate-service-account --key-file=${GCS_CREDS}"
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/Dockerfile ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/deployment.yaml ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/service.yaml ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/app.yaml ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/app.py ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/requirements.txt ."
+                    }
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh "docker build -t gcr.io/kube-doc-jenkins/fibonacci-app:${IMAGE_TAG} ."
+                }
+            }
+        }
+        
+        stage('Push and Pull Docker Image') {
+            steps {
+                script {
+                    sh "gcloud auth configure-docker 2>/dev/null || true"
+                    sh "docker push gcr.io/kube-doc-jenkins/fibonacci-app:${IMAGE_TAG} 2>/dev/null || true"
+                    sh "docker pull gcr.io/kube-doc-jenkins/fibonacci-app:${IMAGE_TAG} 2>/dev/null || true"
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'kube-config-file', variable: 'KUBE_CONFIG')]) {
+                        withEnv(["KUBECONFIG=${KUBE_CONFIG}"]) {
+                            sh "kubectl apply -f deployment.yaml"
+                            sh "kubectl apply -f service.yaml"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,69 @@
+pipeline {
+    agent any
+    
+    parameters {
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Specify the Docker image tag')
+    }
+    
+    environment {
+        GCS_CREDS = credentials('gcs-service-account-key') // Jenkins credential ID for GCS service account key
+        KUBE_CONFIG = credentials('kube-config-file') // Jenkins credential ID for Kubernetes config file
+    }
+    
+    stages {
+        stage('Activate Service Account and Fetch Files') {
+            steps {
+                script {
+                    // Activate service account for gcloud and fetch files from GCS bucket
+                    withCredentials([file(credentialsId: 'gcs-service-account-key', variable: 'GCS_CREDS')]) {
+                        sh "gcloud auth activate-service-account --key-file=${GCS_CREDS}"
+
+                        // Fetch files from GCS bucket
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/Dockerfile ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/deployment.yaml ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/service.yaml ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/app.yaml ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/app.py ."
+                        sh "gsutil cp gs://gcp-jenkins-pipeline/requirements.txt ."
+                    }
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build Docker image with the specified tag
+                    sh "docker build -t gcr.io/kube-doc-jenkins/fibonacci-app:${params.IMAGE_TAG} ."
+                }
+            }
+        }
+        
+        stage('Push and Pull Docker Image') {
+            steps {
+                script {
+                    // Authenticate Docker with Google Container Registry (GCR)
+                    sh "gcloud auth configure-docker"
+
+                    // Push and pull Docker image with the specified tag
+                    sh "docker push gcr.io/kube-doc-jenkins/fibonacci-app:${params.IMAGE_TAG}"
+                    sh "docker pull gcr.io/kube-doc-jenkins/fibonacci-app:${params.IMAGE_TAG}"
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    // Activate Kubernetes configuration
+                    withCredentials([file(credentialsId: 'kube-config-file', variable: 'KUBE_CONFIG')]) {
+                        withEnv(["KUBECONFIG=${KUBE_CONFIG}"]) {
+                            sh "kubectl apply -f deployment.yaml"
+                            sh "kubectl apply -f service.yaml"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
